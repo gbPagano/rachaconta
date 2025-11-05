@@ -1,13 +1,15 @@
 use std::hash::Hash;
 
+use crate::money::Money;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Person {
-    Named { name: String, money_spent: f64 },
+    Named { name: String, money_spent: Money },
     Unnamed { size: usize },
 }
 
 impl Person {
-    pub fn named(name: &str, money_spent: f64) -> Self {
+    pub fn named(name: &str, money_spent: Money) -> Self {
         Person::Named {
             name: name.into(),
             money_spent,
@@ -28,10 +30,10 @@ impl Person {
         }
     }
 
-    pub fn money_spent(&self) -> f64 {
+    pub fn money_spent(&self) -> Money {
         match self {
             Person::Named { money_spent, .. } => *money_spent,
-            Person::Unnamed { .. } => 0.,
+            Person::Unnamed { .. } => 0.into(),
         }
     }
 }

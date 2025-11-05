@@ -5,6 +5,7 @@ use petgraph::dot::Dot;
 use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
 
+use crate::money::Money;
 use crate::payment::{Payment, ToGraph};
 use crate::person::Person;
 
@@ -21,7 +22,7 @@ pub fn calc_payments(persons: &[Person]) -> Vec<Payment> {
 
     for creditor in persons {
         if matches!(creditor, Person::Unnamed { .. })
-            || matches!(creditor, Person::Named { money_spent, .. } if *money_spent <= 0.0)
+            || matches!(creditor, Person::Named { money_spent, .. } if *money_spent == 0.into())
         {
             continue;
         }
@@ -65,7 +66,7 @@ pub fn optimize_payments(payments: &[Payment]) -> Vec<Payment> {
         .collect()
 }
 
-fn simplify_bidirectional_edges(graph: &mut DiGraph<String, f64>) {
+fn simplify_bidirectional_edges(graph: &mut DiGraph<String, Money>) {
     for edge in graph.edge_indices() {
         if let Some((source, target)) = graph.edge_endpoints(edge) {
             if let Some(e2) = graph.find_edge(target, source)
@@ -74,16 +75,16 @@ fn simplify_bidirectional_edges(graph: &mut DiGraph<String, f64>) {
                 let w1 = graph.edge_weight(e1).unwrap();
                 let w2 = graph.edge_weight(e2).unwrap();
 
-                match w1.partial_cmp(&w2) {
-                    Some(Ordering::Greater) => {
-                        graph.update_edge(source, target, w1 - w2);
-                        graph.remove_edge(e2);
-                    }
-                    Some(Ordering::Less) => {
-                        graph.update_edge(target, source, w2 - w1);
+                match w1.cmp(&w2) {
+                    Ordering::Less => {
+                        graph.update_edge(target, source, *w2 - *w1);
                         graph.remove_edge(e1);
                     }
-                    _ => {
+                    Ordering::Greater => {
+                        graph.update_edge(source, target, *w1 - *w2);
+                        graph.remove_edge(e2);
+                    }
+                    Ordering::Equal => {
                         graph.remove_edge(e1);
                         graph.remove_edge(e2);
                     }
