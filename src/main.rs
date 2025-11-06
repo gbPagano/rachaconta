@@ -119,6 +119,8 @@ fn main() {
     }
 }
 
+/// Parser customizado para `clap` que transforma uma string "NOME=VALOR"
+/// em uma tupla `(String, f64)`.
 fn parse_key_val(s: &str) -> Result<(String, f64), String> {
     let (k, v) = s.split_once('=').ok_or("use o formato NOME=VALOR")?;
     Ok((

@@ -6,7 +6,7 @@ use std::ops::{Add, Div, DivAssign, Mul, Sub};
 ///
 /// `Money` armazena valores monetários como inteiros (centavos) para evitar
 /// problemas de precisão de ponto flutuante em cálculos financeiros.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Money(usize);
 
 impl Money {

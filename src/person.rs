@@ -1,10 +1,18 @@
+use std::fmt;
 use std::hash::Hash;
 
 use crate::money::Money;
 
-#[derive(Debug, Clone, PartialEq)]
+/// Representa um participante na divisão da conta.
+///
+/// Este enum distingue entre uma pessoa específica, com nome,
+/// e um grupo de pessoas anônimas que não fizeram pagamentos.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Person {
+    /// Uma pessoa específica que pagou um valor.
     Named { name: String, money_spent: Money },
+    /// Um grupo de pessoas que não pagaram.
+    /// `size` é o número de pessoas neste grupo (ex: 3 pessoas).
     Unnamed { size: usize },
 }
 
@@ -30,6 +38,7 @@ impl Person {
         }
     }
 
+    /// Retorna o valor total que esta entidade pagou inicialmente.
     pub fn money_spent(&self) -> Money {
         match self {
             Person::Named { money_spent, .. } => *money_spent,
@@ -38,10 +47,8 @@ impl Person {
     }
 }
 
-impl Eq for Person {}
-
-impl Hash for Person {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.identifier().hash(state);
+impl fmt::Display for Person {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.identifier())
     }
 }

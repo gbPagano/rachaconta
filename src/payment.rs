@@ -9,6 +9,7 @@ use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeRef};
 use crate::money::Money;
 use crate::person::Person;
 
+/// Representa uma transação única de pagamento entre duas pessoas.
 #[derive(Debug)]
 pub struct Payment {
     pub from: Person,
@@ -26,6 +27,7 @@ impl Payment {
     }
 }
 
+/// Representa o grafo de pagamentos.
 pub struct Payments(pub StableDiGraph<Person, Money>);
 
 impl Payments {
@@ -52,6 +54,7 @@ impl Payments {
         Self(graph)
     }
 
+    /// Retorna todas as pessoas presentes no grafo.
     pub fn get_persons(&self) -> Vec<Person> {
         self.0
             .node_references()
@@ -59,10 +62,15 @@ impl Payments {
             .collect()
     }
 
+    /// Otimiza o grafo de pagamentos para reduzir o número de transações.
     pub fn optimize(&mut self) {
         self.simplify_bidirectional_edges();
     }
 
+    /// Simplifica dívidas mútuas entre duas pessoas.
+    ///
+    /// Mantém apenas o saldo líquido: por exemplo, se A deve 10 para B, e B deve 7 para A,
+    /// o resultado será A deve 3 para B. Se forem iguais, ambas são removidas.
     fn simplify_bidirectional_edges(&mut self) {
         let indexes = self.0.edge_indices().collect::<Vec<_>>();
         for edge in indexes {
@@ -75,14 +83,19 @@ impl Payments {
 
                     match w1.cmp(w2) {
                         Ordering::Less => {
+                            // Aresta A -> B é removida
+                            // Aresta B -> A é atualizada com a diferença
                             self.0.update_edge(target, source, *w2 - *w1);
                             self.0.remove_edge(e1);
                         }
                         Ordering::Greater => {
+                            // Aresta A -> B é atualizada com a diferença
+                            // Aresta B -> A é removida
                             self.0.update_edge(source, target, *w1 - *w2);
                             self.0.remove_edge(e2);
                         }
                         Ordering::Equal => {
+                            // Dívidas se anulam
                             self.0.remove_edge(e1);
                             self.0.remove_edge(e2);
                         }
@@ -110,14 +123,10 @@ impl Payments {
             .collect()
     }
 
+    /// Imprime a representação do grafo no formato Graphviz DOT na saída padrão.
     pub fn print_dot(&self) {
-        let dot = Dot::with_attr_getters(
-            &self.0,
-            &[],
-            &|_graph, edge_ref| format!("label=\"{}\"", edge_ref.weight()),
-            &|_graph, node_ref| format!("label=\"{}\"", node_ref.1.identifier()),
-        );
-        println!("{dot:?}");
+        let dot = Dot::new(&self.0);
+        println!("{dot}");
     }
 }
 
@@ -135,40 +144,6 @@ impl FromIterator<Person> for Payments {
             .sum();
 
         for creditor in persons.iter() {
-            if matches!(creditor, Person::Unnamed { .. })
-                || matches!(creditor, Person::Named { money_spent, .. } if money_spent.cents() == 0)
-            {
-                continue;
-            }
-
-            let amount_for_each = creditor.money_spent() / num_persons as f64;
-            for debitor in persons.iter().filter(|p| p != &creditor) {
-                let amount = match debitor {
-                    Person::Named { .. } => amount_for_each,
-                    Person::Unnamed { size } => amount_for_each * *size as f64,
-                };
-
-                payments.push(Payment::new(debitor, creditor, amount));
-            }
-        }
-
-        Payments::new(&payments)
-    }
-}
-
-impl From<&[Person]> for Payments {
-    fn from(persons: &[Person]) -> Self {
-        let mut payments = Vec::new();
-
-        let num_persons: usize = persons
-            .iter()
-            .map(|p| match p {
-                Person::Named { .. } => 1,
-                Person::Unnamed { size } => *size,
-            })
-            .sum();
-
-        for creditor in persons {
             if matches!(creditor, Person::Unnamed { .. })
                 || matches!(creditor, Person::Named { money_spent, .. } if money_spent.cents() == 0)
             {
