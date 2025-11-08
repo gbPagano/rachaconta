@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use petgraph::dot::Dot;
 use petgraph::prelude::StableDiGraph;
@@ -63,110 +62,102 @@ impl Payments {
     }
 
     /// Otimiza o grafo de pagamentos para reduzir o número de transações.
+    ///
+    /// Esta função modifica o grafo de pagamentos para reduzir o número de
+    /// pagamentos necessários, mantendo o o mesmo resultado financeiro final.
+    ///
+    /// O algoritmo segue quatro etapas principais:
+    /// 1. **Cálculo dos balanços líquidos** — soma tudo o que cada pessoa deve e tem a receber,
+    ///    resultando em um valor líquido positivo (credor) ou negativo (devedor).
+    /// 2. **Separação de devedores e credores** — organiza ambos os grupos em *heaps*,
+    ///    priorizando os maiores valores para otimizar as quitações.
+    /// 3. **Quitação de dívidas** — faz as compensações diretas entre os maiores devedores
+    ///    e credores até que todos os balanços sejam zerados.
+    /// 4. **Atualizar Grafo:** Remove todas as arestas de pagamento originais e, em seguida,
+    ///    insere as novas arestas otimizada.
     pub fn optimize(&mut self) {
-        self.simplify_bidirectional_edges();
-        self.simplify_transitive_edges();
+        // 1. Calcular Balanços Líquidos
+        // `i64` é usado para permitir balanços negativos (devedores).
+        let mut balances = HashMap::<Person, i64>::new();
+        for person in self.get_persons() {
+            balances.insert(person, 0);
+        }
 
-        assert!(self.validate());
-    }
+        for edge in self.0.edge_references() {
+            let value = edge.weight().raw() as i64;
+            let source = self.0.node_weight(edge.source()).unwrap();
+            let target = self.0.node_weight(edge.target()).unwrap();
 
-    /// Simplifica dívidas mútuas entre duas pessoas.
-    ///
-    /// Mantém apenas o saldo líquido: por exemplo, se A deve 10 para B, e B deve 7 para A,
-    /// o resultado será A deve 3 para B. Se forem iguais, ambas são removidas.
-    fn simplify_bidirectional_edges(&mut self) {
-        let indexes = self.0.edge_indices().collect::<Vec<_>>();
-        for edge in indexes {
-            if let Some((source, target)) = self.0.edge_endpoints(edge) {
-                if let Some(e2) = self.0.find_edge(target, source)
-                    && let Some(e1) = self.0.find_edge(source, target)
-                {
-                    let w1 = self.0.edge_weight(e1).unwrap();
-                    let w2 = self.0.edge_weight(e2).unwrap();
+            // `source` (pagador) tem seu balanço diminuído
+            *balances.entry(source.clone()).or_default() -= value;
+            // `target` (recebedor) tem seu balanço aumentado
+            *balances.entry(target.clone()).or_default() += value;
+        }
 
-                    match w1.cmp(w2) {
-                        Ordering::Less => {
-                            // Aresta A -> B é removida
-                            // Aresta B -> A é atualizada com a diferença
-                            self.0.update_edge(target, source, *w2 - *w1);
-                            self.0.remove_edge(e1);
-                        }
-                        Ordering::Greater => {
-                            // Aresta A -> B é atualizada com a diferença
-                            // Aresta B -> A é removida
-                            self.0.update_edge(source, target, *w1 - *w2);
-                            self.0.remove_edge(e2);
-                        }
-                        Ordering::Equal => {
-                            // Dívidas se anulam
-                            self.0.remove_edge(e1);
-                            self.0.remove_edge(e2);
-                        }
-                    }
-                }
+        // 2. Separar Devedores e Credores
+        let mut debtors = BinaryHeap::new();
+        let mut creditors = BinaryHeap::new();
+
+        for (node_idx, balance) in balances {
+            match balance {
+                b if b < 0 => debtors.push((-b, node_idx)),
+                b if b > 0 => creditors.push((b, node_idx)),
+                _ => (),
             }
         }
-    }
 
-    /// Simplifica dívidas transitivas (A -> B -> C) criando um "atalho" (A -> C).
-    ///
-    /// Esta função itera sobre o grafo para encontrar padrões de dívida onde
-    /// `A` deve para `B`, e `B` deve para `C`. Quando esse padrão é encontrado,
-    /// a dívida é reestruturada para que `A` pague `C` diretamente,
-    /// reduzindo o número de transações intermediárias.
-    fn simplify_transitive_edges(&mut self) {
-        let edge_indexes = self.0.edge_indices().collect::<Vec<_>>();
-        for edge_bc in edge_indexes {
-            let (node_b, node_c) = match self.0.edge_endpoints(edge_bc) {
-                Some(nodes) => nodes,
-                None => continue,
-            };
+        // 3. Quitar as Dívidas
+        let mut new_payments = Vec::new();
 
-            let incoming: Vec<_> = self
-                .0
-                .edges_directed(node_b, petgraph::Incoming)
-                .map(|e| (e.source(), e.id()))
-                .collect();
-            for (node_a, edge_ab) in incoming {
-                // Não simplifica um ciclo de volta para o pagador (A -> B -> A)
-                if node_a == node_c {
-                    continue;
-                }
+        // Pega o maior devedor e o maior credor
+        while let (Some(mut debtor_entry), Some(mut creditor_entry)) =
+            (debtors.pop(), creditors.pop())
+        {
+            let debt = debtor_entry.0;
+            let credit = creditor_entry.0;
 
-                if let Some(&w_ab) = self.0.edge_weight(edge_ab)
-                    && let Some(&w_bc) = self.0.edge_weight(edge_bc)
-                {
-                    // Valor que pode ser "transferido" diretamente de B para C
-                    let w_transfer = w_ab.min(w_bc);
-                    if w_transfer == Money::from(0) {
-                        continue;
-                    }
+            let transfer_amount = debt.min(credit);
 
-                    // 1. Adiciona/atualiza a aresta A -> C
-                    if let Some(edge_ac) = self.0.find_edge(node_a, node_c) {
-                        *self.0.edge_weight_mut(edge_ac).unwrap() += w_transfer;
-                    } else {
-                        self.0.update_edge(node_a, node_c, w_transfer);
-                    }
+            new_payments.push(Payment::new(
+                &debtor_entry.1,
+                &creditor_entry.1,
+                Money::from(transfer_amount as f64 / 1000.),
+            ));
 
-                    // 2. Atualiza ou remove a aresta A -> B
-                    let w_ab_new = w_ab - w_transfer;
-                    if w_ab_new == Money::from(0) {
-                        self.0.remove_edge(edge_ab);
-                    } else {
-                        *self.0.edge_weight_mut(edge_ab).unwrap() = w_ab_new;
-                    }
+            let remaining_debt = debt - transfer_amount;
+            let remaining_credit = credit - transfer_amount;
 
-                    // 3. Atualiza ou remove a aresta B -> C
-                    let w_bc_new = w_bc - w_transfer;
-                    if w_bc_new == Money::from(0) {
-                        self.0.remove_edge(edge_bc);
-                    } else {
-                        *self.0.edge_weight_mut(edge_bc).unwrap() = w_bc_new;
-                    }
-                }
+            // Se o devedor ainda deve algo, ele volta para o heap
+            if remaining_debt > 0 {
+                debtor_entry.0 = remaining_debt;
+                debtors.push(debtor_entry);
+            }
+
+            // Se o credor ainda tem algo a receber, ele volta para o heap
+            if remaining_credit > 0 {
+                creditor_entry.0 = remaining_credit;
+                creditors.push(creditor_entry);
             }
         }
+        // 4. Atualizar grafo
+        // Mapeamos os nodes ja existentes no grafo.
+        let node_map: HashMap<_, _> = self
+            .0
+            .node_references()
+            .map(|(i, p)| (p.clone(), i))
+            .collect();
+
+        // Limpamos as edges atuais, e adicionamos os novos pagamentos otimizados
+        self.0.clear_edges();
+        for p in new_payments.into_iter() {
+            let from = node_map[&p.from];
+            let to = node_map[&p.to];
+
+            self.0.add_edge(from, to, p.value);
+        }
+
+        // Garante que o balanço final continua correto
+        debug_assert!(self.validate());
     }
 
     pub fn to_vec(&self) -> Vec<Payment> {
@@ -267,56 +258,56 @@ mod test {
     use super::*;
     use std::collections::HashSet;
 
-    #[test]
-    fn simplify_bidirectional_edges() {
-        let persons = vec![
-            Person::named("A", 10.into()),
-            Person::named("B", 20.into()),
-            Person::named("C", 10.into()),
-            Person::unnamed(1),
-        ];
-
-        let mut initial_payments: Payments = persons.clone().into_iter().collect();
-
-        let final_payments = vec![
-            Payment::new(&persons[0], &persons[1], 2.5.into()),
-            Payment::new(&persons[2], &persons[1], 2.5.into()),
-            Payment::new(&persons[3], &persons[0], 2.5.into()),
-            Payment::new(&persons[3], &persons[2], 2.5.into()),
-            Payment::new(&persons[3], &persons[1], 5.into()),
-        ];
-
-        initial_payments.simplify_bidirectional_edges();
-        let left: HashSet<Payment> = HashSet::from_iter(initial_payments.to_vec());
-        let right: HashSet<Payment> = HashSet::from_iter(final_payments);
-
-        assert_eq!(left, right);
-        assert!(initial_payments.validate());
-    }
-
-    #[test]
-    fn simplify_transitive_edges() {
-        let persons = vec![
-            Person::named("A", 14.into()),
-            Person::named("B", 20.into()),
-            Person::named("C", 8.into()),
-            Person::unnamed(1),
-        ];
-
-        let mut initial_payments: Payments = persons.clone().into_iter().collect();
-
-        let final_payments = vec![
-            Payment::new(&persons[2], &persons[1], 2.5.into()),
-            Payment::new(&persons[3], &persons[1], 7.into()),
-            Payment::new(&persons[3], &persons[0], 3.5.into()),
-        ];
-
-        initial_payments.simplify_bidirectional_edges();
-        initial_payments.simplify_transitive_edges();
-        let left: HashSet<Payment> = HashSet::from_iter(initial_payments.to_vec());
-        let right: HashSet<Payment> = HashSet::from_iter(final_payments);
-
-        assert_eq!(left, right);
-        assert!(initial_payments.validate());
-    }
+    // #[test]
+    // fn simplify_bidirectional_edges() {
+    //     let persons = vec![
+    //         Person::named("A", 10.into()),
+    //         Person::named("B", 20.into()),
+    //         Person::named("C", 10.into()),
+    //         Person::unnamed(1),
+    //     ];
+    //
+    //     let mut initial_payments: Payments = persons.clone().into_iter().collect();
+    //
+    //     let final_payments = vec![
+    //         Payment::new(&persons[0], &persons[1], 2.5.into()),
+    //         Payment::new(&persons[2], &persons[1], 2.5.into()),
+    //         Payment::new(&persons[3], &persons[0], 2.5.into()),
+    //         Payment::new(&persons[3], &persons[2], 2.5.into()),
+    //         Payment::new(&persons[3], &persons[1], 5.into()),
+    //     ];
+    //
+    //     initial_payments.simplify_bidirectional_edges();
+    //     let left: HashSet<Payment> = HashSet::from_iter(initial_payments.to_vec());
+    //     let right: HashSet<Payment> = HashSet::from_iter(final_payments);
+    //
+    //     assert_eq!(left, right);
+    //     assert!(initial_payments.validate());
+    // }
+    //
+    // #[test]
+    // fn simplify_transitive_edges() {
+    //     let persons = vec![
+    //         Person::named("A", 14.into()),
+    //         Person::named("B", 20.into()),
+    //         Person::named("C", 8.into()),
+    //         Person::unnamed(1),
+    //     ];
+    //
+    //     let mut initial_payments: Payments = persons.clone().into_iter().collect();
+    //
+    //     let final_payments = vec![
+    //         Payment::new(&persons[2], &persons[1], 2.5.into()),
+    //         Payment::new(&persons[3], &persons[1], 7.into()),
+    //         Payment::new(&persons[3], &persons[0], 3.5.into()),
+    //     ];
+    //
+    //     initial_payments.simplify_bidirectional_edges();
+    //     initial_payments.simplify_transitive_edges();
+    //     let left: HashSet<Payment> = HashSet::from_iter(initial_payments.to_vec());
+    //     let right: HashSet<Payment> = HashSet::from_iter(final_payments);
+    //
+    //     assert_eq!(left, right);
+    //     assert!(initial_payments.validate());
+    // }
 }

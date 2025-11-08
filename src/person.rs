@@ -7,7 +7,7 @@ use crate::money::Money;
 ///
 /// Este enum distingue entre uma pessoa específica, com nome,
 /// e um grupo de pessoas anônimas que não fizeram pagamentos.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Person {
     /// Uma pessoa específica que pagou um valor.
     Named { name: String, money_spent: Money },

@@ -10,6 +10,10 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, Sub};
 pub struct Money(usize);
 
 impl Money {
+    pub fn raw(&self) -> usize {
+        self.0
+    }
+
     /// Retorna o valor como um número decimal (em reais/dólares/etc.).
     pub fn decimal(&self) -> f64 {
         self.0 as f64 / 1000.
