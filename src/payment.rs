@@ -254,6 +254,9 @@ impl Payments {
 
             match person {
                 Person::Named { .. } => println!("\n{}:", person.identifier()),
+                Person::Unnamed { size } if size == 1 => {
+                    println!("\nPessoa restante:")
+                }
                 Person::Unnamed { .. } => {
                     println!("\nCada uma das {} que restaram:", person.identifier())
                 }

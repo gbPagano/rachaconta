@@ -59,7 +59,7 @@ rafael:
     total a pagar: 0.00
     total a receber: 65.00
 
-Cada uma das 1 pessoas que restaram:
+Pessoa restante:
     total a pagar: 55.00
     total a receber: 0.00
 
