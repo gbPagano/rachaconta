@@ -3,6 +3,11 @@ name = "rateio"
 version = "0.1.0"
 edition = "2024"
 authors = ["gbPagano <guilhermebpagano@gmail.com>"]
+keywords = ["terminal", "cli", "portuguese", "money"]
+license = "MIT"
+description = "Um CLI para dividir contas de forma justa."
+readme = "README.md"
+repository = "https://github.com/gbPagano/rateio"
 
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
