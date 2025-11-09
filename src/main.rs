@@ -65,6 +65,10 @@ fn main() {
             initial_payments.len()
         );
         std::process::exit(1);
+    } else if total_persons <= 1 {
+        eprintln!("Erro: é necessário pelo menos duas pessoas para dividir a conta.");
+        eprintln!("Dica: adicione mais participantes com -p ou registre mais de um pagamento.");
+        std::process::exit(1);
     }
 
     let mut persons: Vec<_> = initial_payments
