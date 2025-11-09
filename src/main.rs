@@ -47,6 +47,8 @@ struct Args {
 }
 
 fn main() {
+    human_panic::setup_panic!();
+
     let args = Args::parse();
 
     let initial_payments = args.initial_payments;

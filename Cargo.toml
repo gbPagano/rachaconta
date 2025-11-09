@@ -8,8 +8,10 @@ license = "MIT"
 description = "Um CLI para dividir contas de forma justa."
 readme = "README.md"
 repository = "https://github.com/gbPagano/rateio"
+homepage = "https://github.com/gbPagano/rateio"
 
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
+human-panic = "2.0.4"
 petgraph = "0.8.3"
 rust_decimal = { version = "1.39.0", features = ["macros"] }
